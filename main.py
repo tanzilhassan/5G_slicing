@@ -18,7 +18,7 @@ class Flow:
     
     def ack(self, num_packets, time):
         self.num_packets -= num_packets
-        if self.num_packets <= 0:
+        if self.num_packets <= 0 and self.completion_time==None:
             self.completion_time = time
             print(f'Flow {self.id} completed at time {time}')
             return True
@@ -57,28 +57,33 @@ class BaseStation:
         total_packets = sum(queue.packets for queue in self.queues)
         
         # Solve how many prbs to assign to each queue
-        prbs_allocation = [0] * len(self.queues) if total_packets == 0 else [self.total_num_prbs // len(self.queues)] * len(self.queues)
-        prbs_allocation_assigned = prbs_allocation
+        total_packets = sum(queue.packets for queue in self.queues)
+        prbs_allocation = [0] * len(self.queues)
+        if total_packets > 0:
+            for i, queue in enumerate(self.queues):
+                proportion = queue.packets / total_packets
+                prbs_allocation[i] = int(proportion * self.total_num_prbs)
+
+        # prbs_allocation = [0] * len(self.queues) if total_packets == 0 else [self.total_num_prbs // len(self.queues)] * len(self.queues)
+        self.prb_allocations.append(prbs_allocation)
+        prbs_allocation_used = [0] * len(self.queues)
+
         for i, queue in enumerate(self.queues):
             if queue.packets > 0:
-                # queue_share = queue.packets / total_packets
-                # prbs_for_queue = int(queue_share * self.total_num_prbs)
-                # prbs_allocation[i] = prbs_for_queue
 
-                while prbs_allocation_assigned[i] > 0 and len(queue.flows_packets) > 0:
+                while prbs_allocation_used[i] < prbs_allocation[i] and len(queue.flows_packets) > 0:
                     flow_id = queue.flows_packets.pop(0)
                     flow = next((f for f in queue.flows if f.id == flow_id), None)
                     if flow:
                         completed = flow.ack(1, self.time) # confirm it was digested
                         queue.packets -= 1  # Ensure to decrement queue packets
-                        prbs_allocation_assigned[i] -= 1
+                        prbs_allocation_used[i] += 1
                         if completed:
                             self.completed_flows.append(flow)
                             completed = False
                 print(f'Queue:{queue.id}, length:{len(queue.flows_packets)}')
 
-        self.prb_allocations.append(prbs_allocation)
-        print(f'PRB allocated: {prbs_allocation}, PRB leftover: {prbs_allocation_assigned}')
+        print(f'PRB allocated: {prbs_allocation}, PRB used: {prbs_allocation_used}')
 
     def simulate_time_step(self):
         self.time += 1
@@ -90,10 +95,10 @@ class BaseStation:
             print('-' * 20)
             print(f'Time Step: {self.time}')
 
-            if len(self.completed_flows) != len(random_flows):
-                self.simulate_time_step()
-            else:
+            if len(self.completed_flows) == len(random_flows):
                 break
+
+            self.simulate_time_step()
 
             completion_times = [(flow.id, flow.start_time, flow.completion_time) for flow in self.completed_flows]
             print('completed:', completion_times)
@@ -109,13 +114,13 @@ class BaseStation:
 
 # Set up the simulation parameters
 execution_time = 1000
-flows_number = 3
+flows_number = 6
 base_station = BaseStation(prb_data_capacity=1, num_prbs=15)
 
 # Generate random flows and associate them with queues
 
-# random_flows = [Flow(id=i, num_packets=random.randint(10, 20), start_time=random.randint(0, 10)) for i in range(flows_number)]
-random_flows = [Flow(id=i, num_packets=10, start_time=0) for i in range(flows_number)]
+random_flows = [Flow(id=i, num_packets=random.randint(10, 20), start_time=random.randint(0, 10)) for i in range(flows_number)]
+# random_flows = [Flow(id=i, num_packets=10, start_time=0) for i in range(flows_number)]
 for i, flow in enumerate(random_flows):
     queue_index = i % len(base_station.queues)
     print('flow:'+str(i), 'on queue:'+str(queue_index))
