@@ -20,6 +20,9 @@ class Flow:
         self.num_packets -= num_packets
         if self.num_packets <= 0:
             self.completion_time = time
+            print(f'Flow {self.id} completed at time {time}')
+            return True
+        return False
 
     def send(self):
         sent_packets = min(random.randint(1, 10), self.num_packets)
@@ -46,33 +49,36 @@ class BaseStation:
                     added_packets = flow.send()
                     queue.packets += added_packets
                     queue.flows_packets.extend([flow.id] * added_packets)
-                    print(f'Flow {flow.id} added {added_packets} packets to Queue {queue.id}')
+                    # print(f'Flow {flow.id} added {added_packets} packets to Queue {queue.id}')
+            print('queue'+str(queue.id), queue.flows_packets)
 
     def drain_queues(self):
         print('\n----DRAIN----')
         total_packets = sum(queue.packets for queue in self.queues)
+        
+        # Solve how many prbs to assign to each queue
         prbs_allocation = [0] * len(self.queues) if total_packets == 0 else [self.total_num_prbs // len(self.queues)] * len(self.queues)
-
+        prbs_allocation_assigned = prbs_allocation
         for i, queue in enumerate(self.queues):
             if queue.packets > 0:
-                queue_share = queue.packets / total_packets
-                prbs_for_queue = int(queue_share * self.total_num_prbs)
-                prbs_allocation[i] = prbs_for_queue
+                # queue_share = queue.packets / total_packets
+                # prbs_for_queue = int(queue_share * self.total_num_prbs)
+                # prbs_allocation[i] = prbs_for_queue
 
-                while prbs_for_queue > 0 and len(queue.flows_packets) > 0:
+                while prbs_allocation_assigned[i] > 0 and len(queue.flows_packets) > 0:
                     flow_id = queue.flows_packets.pop(0)
                     flow = next((f for f in queue.flows if f.id == flow_id), None)
                     if flow:
-                        flow.ack(1, self.time)
+                        completed = flow.ack(1, self.time) # confirm it was digested
                         queue.packets -= 1  # Ensure to decrement queue packets
-                        prbs_for_queue -= 1
-                        if flow.num_packets <= 0 and flow not in self.completed_flows:
+                        prbs_allocation_assigned[i] -= 1
+                        if completed:
                             self.completed_flows.append(flow)
-                            print(f'Flow {flow.id} completed at time {self.time}')
-                print(f'Queue {queue.id} after draining: {len(queue.flows_packets)} packets left')
+                            completed = False
+                print(f'Queue:{queue.id}, length:{len(queue.flows_packets)}')
 
         self.prb_allocations.append(prbs_allocation)
-        print(f'PRB Allocation: {prbs_allocation}')
+        print(f'PRB allocated: {prbs_allocation}, PRB leftover: {prbs_allocation_assigned}')
 
     def simulate_time_step(self):
         self.time += 1
@@ -83,9 +89,15 @@ class BaseStation:
         for _ in range(num_steps):
             print('-' * 20)
             print(f'Time Step: {self.time}')
-            self.simulate_time_step()
 
-        completion_times = [(flow.id, flow.start_time, flow.completion_time) for flow in self.completed_flows]
+            if len(self.completed_flows) != len(random_flows):
+                self.simulate_time_step()
+            else:
+                break
+
+            completion_times = [(flow.id, flow.start_time, flow.completion_time) for flow in self.completed_flows]
+            print('completed:', completion_times)
+
         return completion_times
 
     def write_prb_allocations_to_csv(self, filename):
@@ -97,14 +109,16 @@ class BaseStation:
 
 # Set up the simulation parameters
 execution_time = 1000
-flows_number = 10
+flows_number = 3
 base_station = BaseStation(prb_data_capacity=1, num_prbs=15)
 
 # Generate random flows and associate them with queues
 
-random_flows = [Flow(id=i, num_packets=random.randint(5000, 100000), start_time=random.randint(0, 100)) for i in range(flows_number)]
+# random_flows = [Flow(id=i, num_packets=random.randint(10, 20), start_time=random.randint(0, 10)) for i in range(flows_number)]
+random_flows = [Flow(id=i, num_packets=10, start_time=0) for i in range(flows_number)]
 for i, flow in enumerate(random_flows):
     queue_index = i % len(base_station.queues)
+    print('flow:'+str(i), 'on queue:'+str(queue_index))
     base_station.add_flow(flow, queue_index)
 
 # Run the simulation
