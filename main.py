@@ -27,13 +27,18 @@ class Flow:
         return sent_packets
 
 class BaseStation:
-    def __init__(self, prb_data_capacity: int, num_prbs: int):
+    def __init__(self, prb_data_capacity: int, num_prbs: int, current_load: float):
         self.queues = [Queue(id) for id in range(3)]  # Assume 3 queues
         self.time = 0
         self.prb_data_capacity = prb_data_capacity
         self.total_num_prbs = num_prbs
         self.completed_flows = []
         self.prb_allocations = []
+        self.buffer_size = []   # buffer size allocated for each queue
+        self.current_load = current_load  # how loaded BS is right now
+        
+        
+        
 
     def add_flow(self, flow: Flow, queue_index: int):
         self.queues[queue_index].flows.append(flow)
@@ -48,7 +53,7 @@ class BaseStation:
                     queue.flows_packets.extend([flow.id] * added_packets)
                     print(f'Flow {flow.id} added {added_packets} packets to Queue {queue.id}')
 
-    def drain_queues(self):
+    def drain_queues(self, radio_link_quality):
         print('\n----DRAIN----')
         total_packets = sum(queue.packets for queue in self.queues)
         prbs_allocation = [0] * len(self.queues) if total_packets == 0 else [self.total_num_prbs // len(self.queues)] * len(self.queues)
@@ -64,7 +69,7 @@ class BaseStation:
                     flow = next((f for f in queue.flows if f.id == flow_id), None)
                     if flow:
                         flow.ack(1, self.time)
-                        queue.packets -= 1  # Ensure to decrement queue packets
+                        queue.packets -= self.prb_data_capacity * radio_link_quality[i]   # Ensure to decrement queue packets
                         prbs_for_queue -= 1
                         if flow.num_packets <= 0 and flow not in self.completed_flows:
                             self.completed_flows.append(flow)
@@ -75,9 +80,10 @@ class BaseStation:
         print(f'PRB Allocation: {prbs_allocation}')
 
     def simulate_time_step(self):
+        self.radio_link_quality = [random.random() for _ in range(3)] 
         self.time += 1
         self.fill_queues()
-        self.drain_queues()
+        self.drain_queues(radio_link_quality=self.radio_link_quality)
 
     def simulate(self, num_steps: int):
         for _ in range(num_steps):
@@ -96,9 +102,9 @@ class BaseStation:
                 csvwriter.writerow([time_step] + allocation)
 
 # Set up the simulation parameters
-execution_time = 1000
+execution_time = 10000
 flows_number = 10
-base_station = BaseStation(prb_data_capacity=1, num_prbs=15)
+base_station = BaseStation(prb_data_capacity=5, num_prbs=50, current_load=0.08)
 
 # Generate random flows and associate them with queues
 
