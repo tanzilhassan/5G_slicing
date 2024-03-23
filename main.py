@@ -33,7 +33,7 @@ class Flow:
         self.inflight = inflight
 
 class BaseStation:
-    def __init__(self, prb_data_capacity: int, num_prbs: int, current_load: float):
+    def __init__(self, prb_data_capacity: int, num_prbs: int):
         self.queues = [Queue(id) for id in range(3)]  # Assume 3 queues
         self.time = 0
         self.prb_data_capacity = prb_data_capacity
